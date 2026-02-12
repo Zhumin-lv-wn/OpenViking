@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
+# Copyright (c) 2026 Beijing Volcano Engine Technology Co., Ltd.
+# SPDX-License-Identifier: Apache-2.0
 """
-RAG Evaluation Tool for OpenViking.
+RAG Evaluation CLI Tool for OpenViking.
 
 Usage:
-    uv run rag_eval.py --docs_dir ./docs --question_file ./questions.json
-    uv run rag_eval.py --docs_dir ./docs1 --docs_dir ./docs2 --code_dir ./code --question_file ./questions.json
+    python -m openviking.eval.rag_eval --docs_dir ./docs --question_file ./questions.jsonl
+    python -m openviking.eval.rag_eval --docs_dir ./docs --code_dir ./code --question_file ./questions.jsonl
 """
 
 import argparse
@@ -13,8 +15,9 @@ import json
 import logging
 import os
 import sys
+import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List
 
 logging.basicConfig(
     level=logging.INFO,
@@ -50,9 +53,9 @@ def load_questions(question_file: str) -> List[Dict[str, Any]]:
     return questions
 
 
-class SimpleRAGEvaluator:
+class RAGEvaluator:
     """
-    Simple RAG evaluator that uses OpenViking for retrieval and evaluation.
+    RAG evaluator that uses OpenViking for retrieval and evaluation.
     """
 
     def __init__(
@@ -82,7 +85,6 @@ class SimpleRAGEvaluator:
         """Get or create OpenViking client."""
         if self._client is None:
             try:
-                import os
                 from openviking import OpenViking
 
                 config_path = Path(self.config_path).expanduser()
@@ -90,9 +92,7 @@ class SimpleRAGEvaluator:
                     os.environ["OPENVIKING_CONFIG_FILE"] = str(config_path)
                     logger.info(f"Using config file: {config_path}")
 
-                self._client = OpenViking(
-                    path=self.data_path,
-                )
+                self._client = OpenViking(path=self.data_path)
             except Exception as e:
                 logger.error(f"Failed to create OpenViking client: {e}")
                 raise
@@ -143,7 +143,7 @@ class SimpleRAGEvaluator:
 
         self._initialized = True
 
-    async def retrieve(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    async def retrieve(self, query: str, top_k: int = 5) -> Dict[str, Any]:
         """
         Retrieve relevant contexts for a query.
 
@@ -152,9 +152,10 @@ class SimpleRAGEvaluator:
             top_k: Number of results to retrieve
 
         Returns:
-            List of retrieved contexts
+            Dict with contexts and timing info
         """
         client = self._get_client()
+        start_time = time.time()
 
         try:
             result = client.search(query, limit=top_k)
@@ -168,10 +169,17 @@ class SimpleRAGEvaluator:
                         "score": getattr(ctx, "score", 0.0),
                     })
 
-            return contexts
+            retrieval_time = time.time() - start_time
+            return {
+                "contexts": contexts,
+                "retrieval_time": retrieval_time,
+            }
         except Exception as e:
             logger.error(f"Failed to retrieve for query '{query}': {e}")
-            return []
+            return {
+                "contexts": [],
+                "retrieval_time": time.time() - start_time,
+            }
 
     async def evaluate(
         self,
@@ -192,12 +200,16 @@ class SimpleRAGEvaluator:
 
         results = []
         total_questions = len(questions)
+        total_retrieval_time = 0.0
 
         for i, q_item in enumerate(questions, 1):
             question = q_item["question"]
             logger.info(f"Processing question {i}/{total_questions}: {question[:50]}...")
 
-            contexts = await self.retrieve(question, top_k=top_k)
+            retrieve_result = await self.retrieve(question, top_k=top_k)
+            contexts = retrieve_result["contexts"]
+            retrieval_time = retrieve_result["retrieval_time"]
+            total_retrieval_time += retrieval_time
 
             result = {
                 "question": question,
@@ -205,16 +217,19 @@ class SimpleRAGEvaluator:
                 "context_count": len(contexts),
                 "ground_truth": q_item.get("answer", ""),
                 "files": q_item.get("files", []),
+                "retrieval_time": retrieval_time,
             }
             results.append(result)
 
         return {
             "total_questions": total_questions,
             "results": results,
-            "metrics": self._calculate_metrics(results),
+            "metrics": self._calculate_metrics(results, total_retrieval_time),
         }
 
-    def _calculate_metrics(self, results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def _calculate_metrics(
+        self, results: List[Dict[str, Any]], total_retrieval_time: float
+    ) -> Dict[str, Any]:
         """Calculate evaluation metrics."""
         total = len(results)
         if total == 0:
@@ -226,31 +241,39 @@ class SimpleRAGEvaluator:
         questions_with_contexts = sum(1 for c in context_counts if c > 0)
         retrieval_rate = questions_with_contexts / total if total > 0 else 0
 
+        retrieval_times = [r["retrieval_time"] for r in results]
+        avg_retrieval_time = sum(retrieval_times) / total if total > 0 else 0
+
         return {
             "total_questions": total,
             "avg_contexts_per_question": round(avg_contexts, 2),
             "questions_with_contexts": questions_with_contexts,
             "retrieval_success_rate": round(retrieval_rate, 2),
+            "avg_retrieval_time_ms": round(avg_retrieval_time * 1000, 2),
+            "total_retrieval_time_ms": round(total_retrieval_time * 1000, 2),
         }
 
 
 def print_report(eval_results: Dict[str, Any]):
     """Print evaluation report to console."""
     print("\n" + "=" * 60)
-    print("📊 RAG Evaluation Report")
+    print("RAG Evaluation Report")
     print("=" * 60)
 
     metrics = eval_results.get("metrics", {})
-    print(f"\n📈 Overall Metrics:")
+    print(f"\nOverall Metrics:")
     print(f"  Total Questions: {metrics.get('total_questions', 0)}")
     print(f"  Avg Contexts/Question: {metrics.get('avg_contexts_per_question', 0)}")
     print(f"  Questions with Contexts: {metrics.get('questions_with_contexts', 0)}")
     print(f"  Retrieval Success Rate: {metrics.get('retrieval_success_rate', 0):.1%}")
+    print(f"  Avg Retrieval Time: {metrics.get('avg_retrieval_time_ms', 0):.1f}ms")
+    print(f"  Total Retrieval Time: {metrics.get('total_retrieval_time_ms', 0):.1f}ms")
 
-    print(f"\n📝 Detailed Results:")
+    print(f"\nDetailed Results:")
     for i, result in enumerate(eval_results.get("results", []), 1):
         print(f"\n[Q{i}] {result['question'][:80]}...")
         print(f"  Contexts Retrieved: {result['context_count']}")
+        print(f"  Retrieval Time: {result['retrieval_time']*1000:.1f}ms")
         if result['contexts']:
             for j, ctx in enumerate(result['contexts'][:2], 1):
                 print(f"  [{j}] URI: {ctx['uri'][:60]}...")
@@ -264,6 +287,40 @@ def save_report(eval_results: Dict[str, Any], output_path: str):
     with open(output_path, "w", encoding="utf-8") as f:
         json.dump(eval_results, f, ensure_ascii=False, indent=2)
     logger.info(f"Report saved to: {output_path}")
+
+
+async def run_ragas_evaluation(eval_results: Dict[str, Any]):
+    """Run RAGAS evaluation if available."""
+    try:
+        from openviking.eval.ragas import RagasEvaluator
+        from openviking.eval.types import EvalDataset, EvalSample
+
+        print("\nRunning RAGAS evaluation...")
+        ragas_eval = RagasEvaluator()
+
+        samples = []
+        for result in eval_results["results"]:
+            sample = EvalSample(
+                query=result["question"],
+                context=[c["content"] for c in result["contexts"]],
+                response="",
+                ground_truth=result.get("ground_truth", ""),
+            )
+            samples.append(sample)
+
+        dataset = EvalDataset(name="rag_eval", samples=samples)
+        ragas_result = await ragas_eval.evaluate_dataset(dataset)
+
+        print("\nRAGAS Metrics:")
+        for metric, score in ragas_result.mean_scores.items():
+            print(f"  {metric}: {score:.3f}")
+
+        return ragas_result
+
+    except ImportError:
+        print("\nRAGAS not installed.")
+        print("   Install with: pip install ragas datasets")
+        return None
 
 
 async def main_async(args):
@@ -281,18 +338,18 @@ async def main_async(args):
         logger.error(f"Question file not found: {question_file}")
         sys.exit(1)
 
-    print("❓ Loading questions...")
+    print("Loading questions...")
     questions = load_questions(str(question_file))
     print(f"   Loaded {len(questions)} questions")
 
-    evaluator = SimpleRAGEvaluator(
+    evaluator = RAGEvaluator(
         docs_dirs=args.docs_dir,
         code_dirs=args.code_dir,
         config_path=args.config,
         data_path=args.data_path,
     )
 
-    print("\n🔍 Running RAG evaluation...")
+    print("\nRunning RAG evaluation...")
     eval_results = await evaluator.evaluate(
         questions=questions,
         top_k=args.top_k,
@@ -304,36 +361,7 @@ async def main_async(args):
         save_report(eval_results, args.output)
 
     if args.ragas:
-        try:
-            from openviking.eval.ragas import RagasEvaluator
-
-            print("\n🚀 Running RAGAS evaluation...")
-            ragas_eval = RagasEvaluator()
-
-            samples = []
-            for result in eval_results["results"]:
-                from openviking.eval.types import EvalSample
-
-                sample = EvalSample(
-                    query=result["question"],
-                    context=[c["content"] for c in result["contexts"]],
-                    response="",
-                    ground_truth=result.get("ground_truth", ""),
-                )
-                samples.append(sample)
-
-            from openviking.eval.types import EvalDataset
-
-            dataset = EvalDataset(name="rag_eval", samples=samples)
-            ragas_result = await ragas_eval.evaluate_dataset(dataset)
-
-            print("\n📊 RAGAS Metrics:")
-            for metric, score in ragas_result.mean_scores.items():
-                print(f"  {metric}: {score:.3f}")
-
-        except ImportError:
-            print("\n❌ RAGAS not installed.")
-            print("   Install with: pip install ragas datasets")
+        await run_ragas_evaluation(eval_results)
 
 
 def main():
@@ -344,13 +372,13 @@ def main():
         epilog="""
 Examples:
   # Evaluate with documents
-  uv run rag_eval.py --docs_dir ./docs --question_file ./questions.json
+  python -m openviking.eval.rag_eval --docs_dir ./docs --question_file ./questions.jsonl
 
   # Evaluate with multiple document directories and code
-  uv run rag_eval.py --docs_dir ./docs1 --docs_dir ./docs2 --code_dir ./code --question_file ./questions.json
+  python -m openviking.eval.rag_eval --docs_dir ./docs1 --docs_dir ./docs2 --code_dir ./code --question_file ./questions.jsonl
 
   # With RAGAS metrics
-  uv run rag_eval.py --docs_dir ./docs --question_file ./questions.json --ragas
+  python -m openviking.eval.rag_eval --docs_dir ./docs --question_file ./questions.jsonl --ragas
         """,
     )
 
@@ -405,7 +433,6 @@ Examples:
     )
 
     args = parser.parse_args()
-
     asyncio.run(main_async(args))
 
 

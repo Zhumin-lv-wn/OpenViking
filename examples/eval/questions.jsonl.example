@@ -1,3 +1,0 @@
-{"question": "What is OpenViking's core positioning?", "answer": "OpenViking is an open-source context database designed for AI Agents, using a filesystem paradigm to manage memories, resources, and skills.", "files": ["README.md"]}
-{"question": "How does tiered context loading work?", "answer": "Tiered loading uses L0 (abstract), L1 (overview), and L2 (full detail) layers to load only necessary context, reducing token costs.", "files": ["docs/en/concepts/03-context-layers.md"]}
-{"question": "What are the six memory categories?", "answer": "The six memory categories are: profile, preferences, entities, events, cases, and patterns.", "files": ["docs/en/concepts/02-context-types.md"]}
