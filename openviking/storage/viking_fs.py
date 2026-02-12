@@ -292,7 +292,7 @@ class VikingFS:
         Returns:
             FindResult
         """
-        from openviking_cli.retrieve import (
+        from openviking.retrieve import (
             ContextType,
             FindResult,
             HierarchicalRetriever,
@@ -370,12 +370,11 @@ class VikingFS:
         Returns:
             FindResult
         """
-        from openviking_cli.retrieve.intent_analyzer import IntentAnalyzer
-
-        from openviking_cli.retrieve import (
+        from openviking.retrieve import (
             ContextType,
             FindResult,
             HierarchicalRetriever,
+            IntentAnalyzer,
             QueryPlan,
             TypedQuery,
         )
@@ -583,7 +582,7 @@ class VikingFS:
 
     def _infer_context_type(self, uri: str):
         """Infer context_type from URI."""
-        from openviking_cli.retrieve import ContextType
+        from openviking.retrieve import ContextType
 
         if "/memories" in uri:
             return ContextType.MEMORY

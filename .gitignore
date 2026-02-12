@@ -162,3 +162,5 @@ benchmark_stress_db/
 examples/data/
 third_party/agfs/bin/
 openviking/_version.py
+
+.local/

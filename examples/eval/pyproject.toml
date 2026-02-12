@@ -1,0 +1,22 @@
+[project]
+name = "rag-eval"
+version = "0.1.0"
+description = "RAG Evaluation Tool for OpenViking"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "openviking",
+]
+
+[project.optional-dependencies]
+ragas = [
+    "ragas>=0.1.0",
+    "datasets>=2.14.0",
+]
+
+[project.scripts]
+rag-eval = "rag_eval:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
