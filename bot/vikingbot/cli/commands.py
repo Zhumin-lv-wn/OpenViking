@@ -869,6 +869,10 @@ def tui():
     from vikingbot.session.manager import SessionManager
     from vikingbot.tui.app import run_tui
     import asyncio
+    from loguru import logger
+    
+    # 禁用日志输出，避免影响 TUI 界面
+    logger.disable("vikingbot")
     
     config = load_config()
     bus = MessageBus()

@@ -2,10 +2,30 @@
 
 import asyncio
 import json
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from loguru import logger
+
+
+class ThinkingStepType(Enum):
+    """思考步骤类型（简化版本，避免循环依赖）"""
+    REASONING = "reasoning"
+    TOOL_CALL = "tool_call"
+    TOOL_RESULT = "tool_result"
+    ITERATION = "iteration"
+
+
+@dataclass
+class ThinkingStep:
+    """单个思考步骤（简化版本，避免循环依赖）"""
+    step_type: ThinkingStepType
+    content: str
+    timestamp: datetime = field(default_factory=datetime.now)
+    metadata: dict = field(default_factory=dict)
 
 from vikingbot.bus.events import InboundMessage, OutboundMessage
 from vikingbot.bus.queue import MessageBus
@@ -240,12 +260,28 @@ class AgentLoop:
         while iteration < self.max_iterations:
             iteration += 1
             
+            # 回调：迭代开始
+            if self.thinking_callback:
+                self.thinking_callback(ThinkingStep(
+                    step_type=ThinkingStepType.ITERATION,
+                    content=f"Iteration {iteration}/{self.max_iterations}",
+                    metadata={"iteration": iteration}
+                ))
+            
             # Call LLM
             response = await self.provider.chat(
                 messages=messages,
                 tools=self.tools.get_definitions(),
                 model=self.model
             )
+            
+            # 回调：推理内容
+            if response.reasoning_content and self.thinking_callback:
+                self.thinking_callback(ThinkingStep(
+                    step_type=ThinkingStepType.REASONING,
+                    content=response.reasoning_content,
+                    metadata={}
+                ))
             
             # Handle tool calls
             if response.has_tool_calls:
@@ -270,8 +306,29 @@ class AgentLoop:
                 for tool_call in response.tool_calls:
                     tools_used.append(tool_call.name)
                     args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
+                    
+                    # 回调：工具调用
+                    if self.thinking_callback:
+                        self.thinking_callback(ThinkingStep(
+                            step_type=ThinkingStepType.TOOL_CALL,
+                            content=f"{tool_call.name}({args_str})",
+                            metadata={"tool": tool_call.name, "args": tool_call.arguments}
+                        ))
+                    
                     logger.info(f"Tool call: {tool_call.name}({args_str[:200]})")
                     result = await self.tools.execute(tool_call.name, tool_call.arguments)
+                    
+                    # 回调：工具结果
+                    if self.thinking_callback:
+                        result_str = str(result)
+                        if len(result_str) > 500:
+                            result_str = result_str[:500] + "..."
+                        self.thinking_callback(ThinkingStep(
+                            step_type=ThinkingStepType.TOOL_RESULT,
+                            content=result_str,
+                            metadata={"tool": tool_call.name}
+                        ))
+                    
                     messages = self.context.add_tool_result(
                         messages, tool_call.id, tool_call.name, result
                     )

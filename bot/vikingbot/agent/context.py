@@ -86,6 +86,12 @@ Skills with available="false" need dependencies installed first - you can try in
         system = platform.system()
         runtime = f"{'macOS' if system == 'Darwin' else system} {platform.machine()}, Python {platform.python_version()}"
         
+        # Determine workspace display based on sandbox state
+        if self.sandbox_manager and self.sandbox_manager.config.enabled:
+            workspace_display = "/"
+        else:
+            workspace_display = workspace_path
+        
         return f"""# vikingbot 🐈
 
 You are vikingbot, a helpful AI assistant. You have access to tools that allow you to:
@@ -102,7 +108,7 @@ You are vikingbot, a helpful AI assistant. You have access to tools that allow y
 {runtime}
 
 ## Workspace
-Your workspace is at: /
+Your workspace is at: {workspace_display}
 - Long-term memory: /memory/MEMORY.md
 - History log: /memory/HISTORY.md (grep-searchable)
 - Custom skills: /skills/{{skill-name}}/SKILL.md

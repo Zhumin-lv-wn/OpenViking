@@ -60,14 +60,12 @@ class ReadFileTool(Tool):
                 input_path = Path(path)
 
                 if input_path.is_absolute():
+                    # In sandbox, absolute paths are relative to sandbox workspace
                     if path == "/":
                         sandbox_path = sandbox.workspace
                     else:
-                        resolved = input_path.resolve()
-                        sandbox_resolved = sandbox.workspace.resolve()
-                        if not str(resolved).startswith(str(sandbox_resolved)):
-                            return f"Error: Absolute path outside sandbox: {path}"
-                        sandbox_path = resolved
+                        # Strip leading slash and join with sandbox workspace
+                        sandbox_path = sandbox.workspace / path.lstrip("/")
                 else:
                     sandbox_path = sandbox.workspace / path
 
@@ -141,12 +139,11 @@ class WriteFileTool(Tool):
                 input_path = Path(path)
 
                 if input_path.is_absolute():
-                    resolved = input_path.resolve()
-                    sandbox_resolved = sandbox.workspace.resolve()
-                    if not str(resolved).startswith(str(sandbox_resolved)):
-                        return f"Error: Absolute path outside sandbox: {path}"
+                    # In sandbox, absolute paths are relative to sandbox workspace
+                    sandbox_path = sandbox.workspace / path.lstrip("/")
+                else:
+                    sandbox_path = sandbox.workspace / path
 
-                sandbox_path = sandbox.workspace / path
                 sandbox_path.parent.mkdir(parents=True, exist_ok=True)
                 sandbox_path.write_text(content, encoding="utf-8")
                 return f"Successfully wrote {len(content)} bytes to {path}"
@@ -207,10 +204,13 @@ class EditFileTool(Tool):
         try:
             if self._sandbox_manager and self._session_key:
                 sandbox = await self._sandbox_manager.get_sandbox(self._session_key)
-                sandbox_path = sandbox.workspace / path
+                input_path = Path(path)
 
-                if sandbox_path.is_absolute():
-                    return f"Error: Absolute paths are not allowed in sandbox: {path}"
+                if input_path.is_absolute():
+                    # In sandbox, absolute paths are relative to sandbox workspace
+                    sandbox_path = sandbox.workspace / path.lstrip("/")
+                else:
+                    sandbox_path = sandbox.workspace / path
 
                 if not sandbox_path.exists():
                     return f"Error: File not found: {path}"
@@ -293,14 +293,12 @@ class ListDirTool(Tool):
                 input_path = Path(path)
 
                 if input_path.is_absolute():
+                    # In sandbox, absolute paths are relative to sandbox workspace
                     if path == "/":
                         sandbox_path = sandbox.workspace
                     else:
-                        resolved = input_path.resolve()
-                        sandbox_resolved = sandbox.workspace.resolve()
-                        if not str(resolved).startswith(str(sandbox_resolved)):
-                            return f"Error: Absolute path outside sandbox: {path}"
-                        sandbox_path = resolved
+                        # Strip leading slash and join with sandbox workspace
+                        sandbox_path = sandbox.workspace / path.lstrip("/")
                 else:
                     sandbox_path = sandbox.workspace / path
 

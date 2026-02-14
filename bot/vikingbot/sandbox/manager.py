@@ -66,6 +66,7 @@ class SandboxManager:
     async def _copy_bootstrap_files(self, sandbox_workspace: Path) -> None:
         """Copy bootstrap files from main workspace to sandbox workspace."""
         from vikingbot.agent.context import ContextBuilder
+        from vikingbot.agent.skills import BUILTIN_SKILLS_DIR
         import shutil
 
         init_dir = self.workspace / ContextBuilder.INIT_DIR
@@ -78,10 +79,16 @@ class SandboxManager:
                 else:
                     shutil.copy2(src, dst)
 
+        # Copy workspace skills (highest priority)
         skills_dir = self.workspace / "skills"
         if skills_dir.exists() and skills_dir.is_dir():
             dst_skills = sandbox_workspace / "skills"
             shutil.copytree(skills_dir, dst_skills, dirs_exist_ok=True)
+
+        # Copy built-in skills (lower priority, dirs_exist_ok=True ensures workspace skills override)
+        if BUILTIN_SKILLS_DIR.exists() and BUILTIN_SKILLS_DIR.is_dir():
+            dst_skills = sandbox_workspace / "skills"
+            shutil.copytree(BUILTIN_SKILLS_DIR, dst_skills, dirs_exist_ok=True)
 
         if not init_dir.exists():
             bootstrap_files = ContextBuilder.BOOTSTRAP_FILES

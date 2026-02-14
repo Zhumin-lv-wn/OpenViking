@@ -5,17 +5,49 @@ NanobotTUI {
     background: $surface;
 }
 
-/* 聊天区域 */
-#chat-area {
+/* 聊天屏幕（左右分栏） */
+ChatScreen {
     height: 1fr;
-    padding: 0 1 0 1;
-    border: solid $primary;
+    layout: horizontal;
+}
+
+/* 左侧面板 */
+#left-panel {
+    width: 60%;
+    height: 1fr;
+    layout: vertical;
+    border-right: solid $primary;
+}
+
+/* 右侧面板 */
+#right-panel {
+    width: 40%;
+    height: 1fr;
+    layout: vertical;
+    background: $surface-lighten-1;
+}
+
+/* 思考面板标题 */
+#thinking-title {
+    height: 1;
+    padding: 0 1;
+    background: $primary;
+    color: $text;
+    text-style: bold;
+}
+
+/* 思考日志 */
+#thinking-log {
+    height: 1fr;
+    padding: 0 1;
+    background: $surface-lighten-1;
+    border: none;
 }
 
 /* 消息列表 */
 #message-list {
     height: 1fr;
-    padding: 0 1 0 1;
+    padding: 0 1;
     background: $surface;
     border: none;
 }
@@ -23,7 +55,7 @@ NanobotTUI {
 /* 思考指示器 */
 #thinking-indicator {
     height: 1;
-    padding: 0 1 0 1;
+    padding: 0 1;
     color: $text-muted;
     text-style: italic;
 }
@@ -31,7 +63,7 @@ NanobotTUI {
 /* 聊天输入容器 */
 #chat-input-container {
     height: auto;
-    padding: 1 1 1 1;
+    padding: 1 1;
     border-top: solid $primary;
     background: $surface;
 }
@@ -51,9 +83,10 @@ NanobotTUI {
 /* 状态栏 */
 StatusBar {
     height: 1;
-    padding: 0 1 0 1;
+    padding: 0 1;
     background: $panel;
     color: $text-muted;
+    dock: bottom;
 }
 
 /* 消息样式 */
@@ -87,4 +120,16 @@ Button:focus {
 /* 输入框焦点效果 */
 Input:focus {
     border: solid $primary;
+}
+
+/* 禁用输入框 hover 闪烁效果 */
+Input:hover {
+    background: $surface;
+    border: solid $surface;
+}
+
+/* 确保输入框保持稳定样式 */
+#chat-input:hover {
+    background: $surface;
+    border: solid $surface;
 }
