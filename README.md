@@ -65,8 +65,22 @@ Before starting with OpenViking, please ensure your environment meets the follow
 
 ### 1. Installation
 
+#### Python Package
+
 ```bash
 pip install openviking
+```
+
+#### Rust CLI (Optional)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/volcengine/OpenViking/main/crates/ov_cli/install.sh | bash
+```
+
+Or build from source:
+
+```bash
+cargo install --git https://github.com/volcengine/OpenViking ov_cli
 ```
 
 ### 2. Model Preparation
@@ -269,6 +283,17 @@ Search results:
 ```
 
 Congratulations! You have successfully run OpenViking 🎉
+
+---
+
+## Server Deployment
+
+For production environments, we recommend running OpenViking as a standalone HTTP service to provide persistent, high-performance context support for your AI Agents.
+
+🚀 **Deploy OpenViking on Cloud**:
+To ensure optimal storage performance and data security, we recommend deploying on **Volcengine Elastic Compute Service (ECS)** using the **veLinux** operating system. We have prepared a detailed step-by-step guide to get you started quickly.
+
+👉 **[View: Server Deployment & ECS Setup Guide](./docs/en/getting-started/03-quickstart-server.md)**
 
 ---
 
