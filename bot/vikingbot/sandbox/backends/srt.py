@@ -215,6 +215,12 @@ class SrtBackend(SandboxBackend):
 
     def _load_config(self) -> dict[str, Any]:
         """Load and format config for SRT."""
+        sandbox_workspace_str = str(self._workspace.resolve())
+        allow_write = list(self.config.filesystem.allow_write)
+        
+        if not allow_write or sandbox_workspace_str not in allow_write:
+            allow_write.append(sandbox_workspace_str)
+        
         return {
             "network": {
                 "allowedDomains": self.config.network.allowed_domains,
@@ -223,7 +229,7 @@ class SrtBackend(SandboxBackend):
             },
             "filesystem": {
                 "denyRead": self.config.filesystem.deny_read,
-                "allowWrite": self.config.filesystem.allow_write,
+                "allowWrite": allow_write,
                 "denyWrite": self.config.filesystem.deny_write,
             },
         }
