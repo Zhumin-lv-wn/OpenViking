@@ -218,8 +218,12 @@ class SrtBackend(SandboxBackend):
         sandbox_workspace_str = str(self._workspace.resolve())
         allow_write = list(self.config.filesystem.allow_write)
         
-        if not allow_write or sandbox_workspace_str not in allow_write:
+        if sandbox_workspace_str not in allow_write:
             allow_write.append(sandbox_workspace_str)
+        
+        tmp_dir = "/tmp"
+        if tmp_dir not in allow_write:
+            allow_write.append(tmp_dir)
         
         return {
             "network": {
