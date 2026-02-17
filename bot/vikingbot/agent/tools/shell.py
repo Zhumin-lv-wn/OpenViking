@@ -73,9 +73,6 @@ class ExecTool(Tool):
     
     async def execute(self, command: str, working_dir: str | None = None, **kwargs: Any) -> str:
         cwd = working_dir or self.working_dir or os.getcwd()
-        guard_error = self._guard_command(command, cwd)
-        if guard_error:
-            return guard_error
         
         # Check if sandbox is enabled before trying to use it
         if self.sandbox_manager and self._session_key and self.sandbox_manager.config.enabled:
@@ -85,12 +82,15 @@ class ExecTool(Tool):
                 if command.strip() == "pwd":
                     return "/"
                 
-                if command.strip().startswith("ls "):
-                    return await sandbox.execute(command, timeout=self.timeout)
-                
+                # Sandbox mode: skip local safety guards (sandbox provides isolation)
                 return await sandbox.execute(command, timeout=self.timeout)
             except Exception as e:
                 return f"Error executing in sandbox: {str(e)}"
+        
+        # Non-sandbox mode: apply safety guards
+        guard_error = self._guard_command(command, cwd)
+        if guard_error:
+            return guard_error
 
         try:
             process = await asyncio.create_subprocess_shell(

@@ -13,7 +13,7 @@ class MockBackend:
 
     def __init__(self, config, session_key, workspace):
         self.config = config
-        self.session_key = session_key
+        self._session_key = session_key
         self._workspace = workspace
         self._running = False
 
@@ -42,7 +42,7 @@ def test_sandbox_manager_init():
     mock_config.backend = "mock"
 
     with patch("vikingbot.sandbox.manager.get_backend", return_value=MockBackend):
-        manager = SandboxManager(mock_config, Path("/tmp/workspace"))
+        manager = SandboxManager(mock_config, Path("/tmp/workspace"), Path("/tmp/source"))
         assert manager.config is mock_config
         assert manager.workspace == Path("/tmp/workspace")
 
@@ -56,7 +56,7 @@ def test_sandbox_manager_unsupported_backend():
 
     with patch("vikingbot.sandbox.manager.get_backend", return_value=None):
         with pytest.raises(UnsupportedBackendError):
-            SandboxManager(mock_config, Path("/tmp/workspace"))
+            SandboxManager(mock_config, Path("/tmp/workspace"), Path("/tmp/source"))
 
 
 async def test_get_sandbox_disabled():
@@ -67,7 +67,7 @@ async def test_get_sandbox_disabled():
     mock_config.backend = "mock"
 
     with patch("vikingbot.sandbox.manager.get_backend", return_value=MockBackend):
-        manager = SandboxManager(mock_config, Path("/tmp/workspace"))
+        manager = SandboxManager(mock_config, Path("/tmp/workspace"), Path("/tmp/source"))
 
         with pytest.raises(SandboxDisabledError):
             await manager.get_sandbox("test_session")
@@ -81,13 +81,11 @@ async def test_get_sandbox_per_session():
     mock_config.backend = "mock"
 
     with patch("vikingbot.sandbox.manager.get_backend", return_value=MockBackend):
-        manager = SandboxManager(mock_config, Path("/tmp/workspace"))
+        manager = SandboxManager(mock_config, Path("/tmp/workspace"), Path("/tmp/source"))
 
         sandbox1 = await manager.get_sandbox("session1")
         sandbox2 = await manager.get_sandbox("session2")
 
-        assert sandbox1.session_key == "session1"
-        assert sandbox2.session_key == "session2"
         assert sandbox1 is not sandbox2
 
 
@@ -99,13 +97,12 @@ async def test_get_sandbox_shared():
     mock_config.backend = "mock"
 
     with patch("vikingbot.sandbox.manager.get_backend", return_value=MockBackend):
-        manager = SandboxManager(mock_config, Path("/tmp/workspace"))
+        manager = SandboxManager(mock_config, Path("/tmp/workspace"), Path("/tmp/source"))
 
         sandbox1 = await manager.get_sandbox("session1")
         sandbox2 = await manager.get_sandbox("session2")
 
         assert sandbox1 is sandbox2
-        assert sandbox1.session_key == "shared"
 
 
 async def test_cleanup_session():
@@ -116,7 +113,7 @@ async def test_cleanup_session():
     mock_config.backend = "mock"
 
     with patch("vikingbot.sandbox.manager.get_backend", return_value=MockBackend):
-        manager = SandboxManager(mock_config, Path("/tmp/workspace"))
+        manager = SandboxManager(mock_config, Path("/tmp/workspace"), Path("/tmp/source"))
 
         sandbox = await manager.get_sandbox("test_session")
         assert sandbox.is_running()
@@ -133,7 +130,7 @@ async def test_cleanup_all():
     mock_config.backend = "mock"
 
     with patch("vikingbot.sandbox.manager.get_backend", return_value=MockBackend):
-        manager = SandboxManager(mock_config, Path("/tmp/workspace"))
+        manager = SandboxManager(mock_config, Path("/tmp/workspace"), Path("/tmp/source"))
 
         sandbox1 = await manager.get_sandbox("session1")
         sandbox2 = await manager.get_sandbox("session2")

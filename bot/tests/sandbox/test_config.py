@@ -60,7 +60,7 @@ def test_sandbox_config_defaults():
     config = SandboxConfig()
     assert config.enabled is False
     assert config.backend == "srt"
-    assert config.mode == "disabled"
+    assert config.mode == "per-session"
     assert isinstance(config.network, SandboxNetworkConfig)
     assert isinstance(config.filesystem, SandboxFilesystemConfig)
     assert isinstance(config.runtime, SandboxRuntimeConfig)

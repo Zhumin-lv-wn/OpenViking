@@ -467,7 +467,58 @@ class DockerBackend(SandboxBackend):
 
 ## 5. 工具集成
 
-### 5.1 修改 ExecTool
+### 5.1 路径处理策略
+
+当沙箱启用时，工具对路径的处理分为两种策略：
+
+#### 5.1.1 文件系统工具（ReadFileTool、WriteFileTool、EditFileTool、ListDirTool）
+
+这类工具会将路径映射到沙箱工作区：
+
+| 输入路径 | 处理结果 | 示例 |
+|---------|---------|------|
+| **相对路径** | 直接拼接到沙箱工作区 | `test.txt` → `sandbox.workspace / "test.txt"` |
+| **绝对路径** | 去除前导斜杠后拼接到沙箱工作区 | `/test.txt` → `sandbox.workspace / "test.txt"` |
+| **根路径 `/`** | 直接映射到沙箱工作区 | `/` → `sandbox.workspace` |
+
+**示例**：
+```python
+# 沙箱工作区为 /tmp/sandbox/session1
+read_file("/test.txt")    # 实际读取 /tmp/sandbox/session1/test.txt
+read_file("test.txt")     # 实际读取 /tmp/sandbox/session1/test.txt
+list_dir("/")             # 实际列出 /tmp/sandbox/session1/
+```
+
+#### 5.1.2 Shell 执行工具（ExecTool）
+
+这类工具**不做路径转换**，直接将命令传递给沙箱后端执行：
+
+| 输入 | 处理结果 |
+|-----|---------|
+| 命令字符串 | 直接传递给 SRT 沙箱，由沙箱本身处理路径 |
+| `pwd` 命令 | 特殊处理，直接返回 `/` |
+
+**注意**：ExecTool 与文件系统工具的路径处理策略**不一致**。ExecTool 完全依赖 SRT 沙箱的路径处理能力。
+
+#### 5.1.3 删除文件操作
+
+**当前实现**：没有专门的删除文件工具，删除文件通过 ExecTool 执行 `rm` 命令完成。
+
+| 删除场景 | 示例命令 | 结果行为 |
+|---------|---------|---------|
+| **删除沙箱内相对路径文件** | `rm test.txt` | ✅ 由 SRT 沙箱在其工作区执行，删除沙箱内的文件 |
+| **删除沙箱内绝对路径文件** | `rm /test.txt` | ✅ 由 SRT 沙箱在其工作区执行，删除沙箱内的文件 |
+| **递归删除沙箱内目录** | `rm -r subdir` | ✅ **沙箱模式下允许**（本地安全守卫被跳过） |
+| **强制递归删除** | `rm -rf subdir` | ✅ **沙箱模式下允许**（本地安全守卫被跳过） |
+| **删除沙箱外绝对路径文件** | `rm /etc/passwd` | 🛡️ 由 SRT 沙箱安全规则拦截，根据 `denyRead`/`denyWrite` 配置决定是否允许 |
+
+**安全策略说明**：
+- **沙箱启用时**：跳过本地安全守卫 `_guard_command()`，完全依赖 SRT 沙箱的隔离能力
+  - 沙箱内的文件用户有完全控制权，允许 `rm -r`/`rm -rf` 等操作
+  - SRT 沙箱本身仍会根据 `filesystem.denyRead`/`filesystem.allowWrite`/`filesystem.denyWrite` 规则限制沙箱外的访问
+- **沙箱禁用时**：应用本地安全守卫，阻止 `rm -rf` 等危险模式
+
+### 5.2 修改 ExecTool
 
 ```python
 class ExecTool(Tool):
@@ -485,12 +536,46 @@ class ExecTool(Tool):
 
     async def execute(self, command: str, working_dir: str | None = None, **kwargs) -> str:
         # 如果启用了沙箱，通过沙箱执行
-        if self.sandbox_manager and self.session_key:
+        if self.sandbox_manager and self.session_key and self.sandbox_manager.config.enabled:
             sandbox = await self.sandbox_manager.get_sandbox(self.session_key)
+            
+            # pwd 命令特殊处理
+            if command.strip() == "pwd":
+                return "/"
+            
+            # 其他命令直接传递给沙箱（不做路径转换）
             return await sandbox.execute(command, timeout=self.timeout)
 
         # 否则直接执行（原有逻辑）
         # ...
+```
+
+### 5.3 修改文件系统工具
+
+以 ReadFileTool 为例：
+
+```python
+class ReadFileTool(Tool):
+    async def execute(self, path: str, **kwargs: Any) -> str:
+        if self._sandbox_manager and self._session_key and self._sandbox_manager.config.enabled:
+            sandbox = await self._sandbox_manager.get_sandbox(self._session_key)
+            input_path = Path(path)
+
+            if input_path.is_absolute():
+                # 绝对路径：去除前导斜杠后拼接到沙箱工作区
+                if path == "/":
+                    sandbox_path = sandbox.workspace
+                else:
+                    sandbox_path = sandbox.workspace / path.lstrip("/")
+            else:
+                # 相对路径：直接拼接到沙箱工作区
+                sandbox_path = sandbox.workspace / path
+            
+            # 读取沙箱中的文件
+            content = sandbox_path.read_text(encoding="utf-8")
+            return content
+        
+        # 原有逻辑...
 ```
 
 ## 6. 生命周期管理
@@ -635,15 +720,16 @@ npm install -g @anthropic-ai/sandbox-runtime
 
 ## 11. 实现优先级
 
-| 优先级 | 任务 | 说明 |
-|--------|------|------|
-| P0 | 配置 Schema | 添加 `SandboxConfig` 到 `config/schema.py` |
-| P0 | 抽象接口 | 实现 `SandboxBackend` 基类和注册后端机制 |
-| P0 | 沙箱管理器 | 实现 `SandboxManager` |
-| P1 | SRT 后端 | 实现 `SrtBackend` |
-| P1 | Shell 工具集成 | 修改 `ExecTool` 支持沙箱执行 |
-| P1 | Session 集成 | 在 `SessionManager` 中集成沙箱生命周期 |
-| P2 | 文件系统工具集成 | 修改 `FilesystemTool` 支持沙箱 |
-| P2 | 安装脚本 | 添加依赖安装脚本 |
-| P3 | Docker 后端 | 实现 `DockerBackend`（可选） |
-| P3 | 文档更新 | 更新 README 和配置示例 |
+| 优先级 | 任务 | 说明 | 状态 |
+|--------|------|------|------|
+| P0 | 配置 Schema | 添加 `SandboxConfig` 到 `config/schema.py` | ✅ 已完成 |
+| P0 | 抽象接口 | 实现 `SandboxBackend` 基类和注册后端机制 | ✅ 已完成 |
+| P0 | 沙箱管理器 | 实现 `SandboxManager` | ✅ 已完成 |
+| P1 | SRT 后端 | 实现 `SrtBackend` | ✅ 已完成 |
+| P1 | Shell 工具集成 | 修改 `ExecTool` 支持沙箱执行 | ✅ 已完成 |
+| P1 | Session 集成 | 在 `SessionManager` 中集成沙箱生命周期 | ✅ 已完成 |
+| P1 | 文件系统工具集成 | 修改 `ReadFileTool`/`WriteFileTool`/`EditFileTool`/`ListDirTool` 支持沙箱 | ✅ 已完成 |
+| P1 | 单元测试 | 添加沙箱工具路径处理测试 | ✅ 已完成 |
+| P2 | 安装脚本 | 添加依赖安装脚本 | ⏳ 待完成 |
+| P3 | Docker 后端 | 实现 `DockerBackend`（可选） | ⏳ 待完成 |
+| P3 | 文档更新 | 更新 README 和配置示例 | ⏳ 待完成 |
