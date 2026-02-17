@@ -398,7 +398,7 @@ class SandboxNetworkConfig(BaseModel):
 class SandboxFilesystemConfig(BaseModel):
     """Sandbox filesystem configuration."""
     deny_read: list[str] = Field(default_factory=list)
-    allow_write: list[str] = Field(default_factory=list)
+    allow_write: list[str] = Field(default_factory=lambda: ["/"])
     deny_write: list[str] = Field(default_factory=list)
 
 
