@@ -37,8 +37,9 @@ rollout_timeout: 120
 storage_type: local
 
 # TOS配置 (仅当storage_type=tos时需要)
-# tos_bucket: your-tos-bucket-name
-# tos_region: cn-beijing
+tos_bucket: vikingbot_data
+tos_path: /.vikingbot/
+tos_region: cn-beijing
 
 # NAS配置 (仅当storage_type=nas时需要)
 # nas_server: your-nas-server-address

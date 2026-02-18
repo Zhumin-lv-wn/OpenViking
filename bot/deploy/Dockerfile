@@ -26,6 +26,7 @@ RUN npm install && npm run build
 WORKDIR /app
 
 # Install Python dependencies
+ENV UV_HTTP_TIMEOUT=300
 RUN uv pip install --system --no-cache .
 
 # Install global npm packages for sandbox

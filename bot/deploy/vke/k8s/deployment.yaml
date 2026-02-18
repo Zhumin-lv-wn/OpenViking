@@ -30,7 +30,7 @@ spec:
       - name: vikingbot
         image: __IMAGE_NAME__
         ports:
-        - containerPort: 18790
+        - containerPort: 18791
         volumeMounts:
         - name: vikingbot-data
           mountPath: /root/.vikingbot
@@ -42,15 +42,21 @@ spec:
             cpu: "2"
             memory: "4Gi"
         livenessProbe:
-          tcpSocket:
-            port: 18790
+          httpGet:
+            path: /health
+            port: 18791
           initialDelaySeconds: 60
           periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
         readinessProbe:
-          tcpSocket:
-            port: 18790
+          httpGet:
+            path: /health
+            port: 18791
           initialDelaySeconds: 10
           periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
         command: ["vikingbot"]
         args: ["gateway"]
       volumes:
@@ -69,4 +75,4 @@ spec:
   ports:
   - protocol: TCP
     port: 80
-    targetPort: 18790
+    targetPort: 18791

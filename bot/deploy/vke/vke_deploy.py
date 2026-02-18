@@ -96,8 +96,9 @@ rollout_timeout: 300
 storage_type: local
 
 # TOS配置 (仅当storage_type=tos时需要)
-# tos_bucket: your-tos-bucket-name
-# tos_region: cn-beijing
+tos_bucket: vikingbot_data
+tos_path: /.vikingbot/
+tos_region: cn-beijing
 
 # NAS配置 (仅当storage_type=nas时需要)
 # nas_server: your-nas-server-address
@@ -139,7 +140,7 @@ storage_type: local
         print(f"  存储类型: {self.config.get('storage_type', 'local')}")
         print()
 
-    def run_command(self, cmd: str, cwd: Optional[str] = None, show_output: bool = False) -> tuple[int, str, str]:
+    def run_command(self, cmd: str, cwd: Optional[str] = None, show_output: bool = False, timeout: Optional[float] = 60.0) -> tuple[int, str, str]:
         print(f"执行命令: {cmd}")
         
         if show_output:
@@ -154,13 +155,18 @@ storage_type: local
                 universal_newlines=True
             )
             stdout_lines = []
-            if proc.stdout:
-                for line in iter(proc.stdout.readline, ''):
-                    print(line, end='')
-                    stdout_lines.append(line)
-            stdout = ''.join(stdout_lines)
-            proc.wait()
-            return proc.returncode, stdout, ''
+            try:
+                if proc.stdout:
+                    for line in iter(proc.stdout.readline, ''):
+                        print(line, end='')
+                        stdout_lines.append(line)
+                stdout = ''.join(stdout_lines)
+                proc.wait(timeout=timeout)
+                return proc.returncode, stdout, ''
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                stdout = ''.join(stdout_lines)
+                return -1, stdout, "Command timed out"
         else:
             proc = subprocess.Popen(
                 cmd,
@@ -170,8 +176,13 @@ storage_type: local
                 cwd=cwd,
                 text=True
             )
-            stdout, stderr = proc.communicate()
-            return proc.returncode, stdout, stderr
+            try:
+                stdout, stderr = proc.communicate(timeout=timeout)
+                return proc.returncode, stdout, stderr
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                stdout, stderr = proc.communicate()
+                return -1, stdout, stderr
 
     def check_image_exists(self, image_name: str, image_tag: str) -> bool:
         cmd = f"docker images -q {image_name}:{image_tag}"
@@ -278,6 +289,22 @@ storage_type: local
 
         return None
 
+    def check_pvc_exists(self, namespace: str, pvc_name: str = "vikingbot-data") -> bool:
+        cmd = f"kubectl get pvc {pvc_name} -n {namespace} --no-headers 2>/dev/null || true"
+        # Use shell=True to handle the || true
+        import subprocess
+        result = subprocess.run(
+            cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        # Check if the command succeeded and output is not empty
+        return result.returncode == 0 and result.stdout.strip() != ""
+
+
+
     def deploy_to_vke(self, kubeconfig_path: str) -> bool:
         print("\n=== 步骤5: 部署应用到VKE ===")
 
@@ -308,6 +335,104 @@ storage_type: local
         os.environ["KUBECONFIG"] = kubeconfig_path
 
         k8s_namespace = self.config.get("k8s_namespace", "default")
+        
+        storage_type = self.config.get("storage_type", "local")
+        pvc_exists = self.check_pvc_exists(k8s_namespace)
+        
+        if storage_type == "tos":
+            # If storage type is TOS, use our own PV/PVC instead of the one in the manifest
+            tos_bucket = self.config.get("tos_bucket", "vikingbot_data")
+            tos_path = self.config.get("tos_path", "/.vikingbot/")
+            tos_region = self.config.get("tos_region", self.config.get("volcengine_region", "cn-beijing"))
+            
+            # Now, check if our PV/PVC exist, and if not, create them
+            pv_name = "vikingbot-tos-pv"
+            pvc_name = "vikingbot-data"
+            
+            # Check if PV exists
+            cmd = f"kubectl get pv {pv_name} --ignore-not-found=true -o name"
+            code, stdout, stderr = self.run_command(cmd)
+            pv_exists = code == 0 and stdout.strip() != ""
+            
+            if not pv_exists:
+                print(f"Creating PV {pv_name} for TOS...")
+                pv_yaml = f"""apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {pv_name}
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  csi:
+    driver: fsx.csi.volcengine.com
+    volumeHandle: {pv_name}
+    volumeAttributes:
+      bucket: {tos_bucket}
+      region: {tos_region}
+      path: {tos_path}
+      subpath: /
+      type: TOS
+      server: tos-{tos_region}.ivolces.com
+      secretName: secret-tos-aksk
+      secretNamespace: {k8s_namespace}
+"""
+                temp_pv_file = "/tmp/vke_deploy_pv.yaml"
+                with open(temp_pv_file, "w", encoding="utf-8") as f:
+                    f.write(pv_yaml)
+                cmd = f"kubectl apply -f {temp_pv_file}"
+                code, stdout, stderr = self.run_command(cmd)
+                if code != 0:
+                    print(f"Failed to create PV: {stderr}")
+                    return False
+                print(f"PV {pv_name} created")
+            
+            # Check if PVC exists
+            pvc_exists = self.check_pvc_exists(k8s_namespace, pvc_name)
+            if not pvc_exists:
+                print(f"Creating PVC {pvc_name} for TOS...")
+                pvc_yaml = f"""apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {pvc_name}
+  namespace: {k8s_namespace}
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: ""
+  volumeName: {pv_name}
+"""
+                temp_pvc_file = "/tmp/vke_deploy_pvc.yaml"
+                with open(temp_pvc_file, "w", encoding="utf-8") as f:
+                    f.write(pvc_yaml)
+                cmd = f"kubectl apply -f {temp_pvc_file}"
+                code, stdout, stderr = self.run_command(cmd)
+                if code != 0:
+                    print(f"Failed to create PVC: {stderr}")
+                    return False
+                print(f"PVC {pvc_name} created")
+        
+        if pvc_exists:
+            print("PVC vikingbot-data 已存在，跳过PVC部署以避免修改不可变字段")
+            resources = manifest_content.split("---")
+            filtered_resources = []
+            for res in resources:
+                res = res.strip()
+                if not res:
+                    continue
+                if "kind: PersistentVolumeClaim" in res:
+                    continue
+                filtered_resources.append(res)
+            filtered_manifest = "/tmp/vke_deploy_filtered.yaml"
+            with open(filtered_manifest, 'w', encoding='utf-8') as f:
+                f.write("\n---\n".join(filtered_resources))
+            deploy_path = filtered_manifest
+
         cmd = f"kubectl apply -f {deploy_path} -n {k8s_namespace}"
         code, stdout, stderr = self.run_command(cmd)
 
