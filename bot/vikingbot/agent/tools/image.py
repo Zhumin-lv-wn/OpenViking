@@ -48,7 +48,7 @@ class ImageGenerationTool(Tool):
                 },
                 "size": {
                     "type": "string",
-                    "enum": ["1024x1024", "1792x1024", "1024x1792", "1920x1920"],
+                    "enum": ["1920x1920"],
                     "description": "Image size (default: 1920x1920)",
                     "default": "1920x1920"
                 },
@@ -170,7 +170,6 @@ class ImageGenerationTool(Tool):
                         "prompt": prompt,
                         "strength": 0.7,  # Default edit strength
                     }
-                    
                     # Add image parameter based on format
                     if base_format == "bytes":
                         # bytes format: wrap in BytesIO

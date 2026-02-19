@@ -17,32 +17,25 @@ source .venv/bin/activate
 ## 🚀 Quick Start
 
 > [!TIP]
-> Set your API key in `~/.vikingbot/config.json`.
+> The easiest way to configure vikingbot is through the Console Web UI!
 > Get API keys: [OpenRouter](https://openrouter.ai/keys) (Global) · [Brave Search](https://brave.com/search/api/) (optional, for web search)
 
-**1. Initialize**
+**1. Start the gateway**
 
 ```bash
-vikingbot onboard
+vikingbot gateway
 ```
 
-**2. Configure** (`~/.vikingbot/config.json`)
+This will automatically:
+- Create a default config at `~/.vikingbot/config.json`
+- Start the Console Web UI at http://localhost:18791
 
-For OpenRouter - recommended for global users:
-```json
-{
-  "providers": {
-    "openrouter": {
-      "apiKey": "sk-or-v1-xxx"
-    }
-  },
-  "agents": {
-    "defaults": {
-      "model": "anthropic/claude-opus-4-5"
-    }
-  }
-}
-```
+**2. Configure via Console**
+
+Open http://localhost:18791 in your browser and:
+- Go to the **Config** tab
+- Add your provider API keys (OpenRouter, OpenAI, etc.)
+- Save the config
 
 **3. Chat**
 
@@ -474,6 +467,29 @@ Simply send the command above to your vikingbot (via CLI or any chat channel), a
 
 Config file: `~/.vikingbot/config.json`
 
+> [!IMPORTANT]
+> After modifying the configuration (either via Console UI or by editing the file directly),
+> you need to restart the gateway service for changes to take effect.
+
+### Manual Configuration (Advanced)
+
+If you prefer to edit the config file directly instead of using the Console UI:
+
+```json
+{
+  "providers": {
+    "openai": {
+      "apiKey": "sk-xxx"
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": "openai/doubao-seed-2-0-pro-260215"
+    }
+  }
+}
+```
+
 ### Providers
 
 > [!TIP]
@@ -543,11 +559,9 @@ That's it! Environment variables, model prefixing, config matching, and `vikingb
 
 ### Security
 
-> For production deployments, set `"restrictToWorkspace": true` in your config to sandbox the agent.
-
 | Option | Default | Description |
 |--------|---------|-------------|
-| `tools.restrictToWorkspace` | `false` | When `true`, restricts **all** agent tools (shell, file read/write/edit, list) to the workspace directory. Prevents path traversal and out-of-scope access. |
+| `tools.restrictToWorkspace` | `true` | When `true`, restricts **all** agent tools (shell, file read/write/edit, list) to the workspace directory. Prevents path traversal and out-of-scope access. |
 | `channels.*.allowFrom` | `[]` (allow all) | Whitelist of user IDs. Empty = allow everyone; non-empty = only listed users can interact. |
 
 ### Sandbox
@@ -607,6 +621,28 @@ vikingbot supports sandboxed execution for enhanced security. By default, sandbo
 
 The SRT backend uses `@anthropic-ai/sandbox-runtime`. It's automatically installed when you run `vikingbot onboard`.
 
+**System Dependencies:**
+
+The SRT backend also requires these system packages to be installed:
+- `ripgrep` (rg) - for text search
+- `bubblewrap` (bwrap) - for sandbox isolation  
+- `socat` - for network proxy
+
+**Install on macOS:**
+```bash
+brew install ripgrep bubblewrap socat
+```
+
+**Install on Ubuntu/Debian:**
+```bash
+sudo apt-get install -y ripgrep bubblewrap socat
+```
+
+**Install on Fedora/CentOS:**
+```bash
+sudo dnf install -y ripgrep bubblewrap socat
+```
+
 To verify installation:
 
 ```bash
@@ -650,16 +686,30 @@ which nodejs
 
 | Command | Description |
 |---------|-------------|
-| `vikingbot onboard` | Initialize config & workspace |
 | `vikingbot agent -m "..."` | Chat with the agent |
 | `vikingbot agent` | Interactive chat mode |
 | `vikingbot agent --no-markdown` | Show plain-text replies |
 | `vikingbot agent --logs` | Show runtime logs during chat |
 | `vikingbot tui` | Launch TUI (Terminal User Interface) |
-| `vikingbot gateway` | Start the gateway |
+| `vikingbot gateway` | Start the gateway and Console Web UI |
 | `vikingbot status` | Show status |
 | `vikingbot channels login` | Link WhatsApp (scan QR) |
 | `vikingbot channels status` | Show channel status |
+
+## 🖥️ Console Web UI
+
+The Console Web UI is automatically started when you run `vikingbot gateway`, accessible at http://localhost:18791.
+
+**Features:**
+- **Dashboard**: Quick overview of system status and sessions
+- **Config**: Configure providers, agents, channels, and tools in a user-friendly interface
+  - Form-based editor for easy configuration
+  - JSON editor for advanced users
+- **Sessions**: View and manage chat sessions
+- **Workspace**: Browse and edit files in the workspace directory
+
+> [!IMPORTANT]
+> After saving configuration changes in the Console, you need to restart the gateway service for changes to take effect.
 
 Interactive mode exits: `exit`, `quit`, `/exit`, `/quit`, `:q`, or `Ctrl+D`.
 

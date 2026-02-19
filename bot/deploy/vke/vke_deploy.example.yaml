@@ -10,6 +10,8 @@ vke_cluster_id: ccxxxxxxxxxx
 image_registry: vikingbot-cn-beijing.cr.volces.com
 image_namespace: vikingbot
 image_repository: vikingbot
+# image_tag: 设置为 latest 或留空会自动生成时间戳标签(推荐)
+# 也可以手动指定固定标签，如: v1.0.0, build-123 等
 image_tag: latest
 local_image_name: vikingbot
 
@@ -23,6 +25,7 @@ build_context: .
 k8s_manifest_path: deploy/vke/k8s/deployment.yaml
 k8s_namespace: default
 k8s_deployment_name: vikingbot
+k8s_replicas: 1
 
 kubeconfig_path: ~/.kube/config
 

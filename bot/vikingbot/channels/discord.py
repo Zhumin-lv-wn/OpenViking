@@ -199,7 +199,11 @@ class DiscordChannel(BaseChannel):
 
         content_parts = [content] if content else []
         media_paths: list[str] = []
-        media_dir = Path.home() / ".vikingbot" / "media"
+        if self.workspace_path:
+            media_dir = self.workspace_path / "media"
+        else:
+            # Fallback to ~/.vikingbot/media if workspace not available
+            media_dir = Path.home() / ".vikingbot" / "media"
 
         for attachment in payload.get("attachments") or []:
             url = attachment.get("url")

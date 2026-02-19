@@ -1,6 +1,7 @@
 """Base channel interface for chat platforms."""
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Any
 
 from loguru import logger
@@ -19,7 +20,7 @@ class BaseChannel(ABC):
     
     name: str = "base"
     
-    def __init__(self, config: Any, bus: MessageBus, channel_id: str | None = None):
+    def __init__(self, config: Any, bus: MessageBus, channel_id: str | None = None, workspace_path: Path | None = None):
         """
         Initialize the channel.
         
@@ -27,11 +28,13 @@ class BaseChannel(ABC):
             config: Channel-specific configuration.
             bus: The message bus for communication.
             channel_id: Unique identifier for this channel (for multi-channel support).
+            workspace_path: Path to the user's workspace directory.
         """
         self.config = config
         self.bus = bus
         self._running = False
         self.channel_id = channel_id or getattr(config, "unique_id", self.name)
+        self.workspace_path = workspace_path
         
         # 如果有 channel_id，动态设置 name 为 {type}:{id} 格式
         if self.channel_id and self.channel_id != self.name:

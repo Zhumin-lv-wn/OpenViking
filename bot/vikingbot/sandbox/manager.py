@@ -70,7 +70,7 @@ class SandboxManager:
         from vikingbot.agent.skills import BUILTIN_SKILLS_DIR
         import shutil
 
-        # Copy from source workspace directly
+        # Copy from source workspace init directory (if exists)
         init_dir = self.source_workspace / ContextBuilder.INIT_DIR
         if init_dir.exists() and init_dir.is_dir():
             for item in init_dir.iterdir():
@@ -80,6 +80,15 @@ class SandboxManager:
                     shutil.copytree(src, dst, dirs_exist_ok=True)
                 else:
                     shutil.copy2(src, dst)
+
+        # Always copy bootstrap files from source workspace root
+        bootstrap_files = ContextBuilder.BOOTSTRAP_FILES
+        for filename in bootstrap_files:
+            src = self.source_workspace / filename
+            if src.exists():
+                dst = sandbox_workspace / filename
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dst)
 
         # Copy source workspace skills (highest priority)
         skills_dir = self.source_workspace / "skills"
@@ -91,24 +100,6 @@ class SandboxManager:
         if BUILTIN_SKILLS_DIR.exists() and BUILTIN_SKILLS_DIR.is_dir():
             dst_skills = sandbox_workspace / "skills"
             shutil.copytree(BUILTIN_SKILLS_DIR, dst_skills, dirs_exist_ok=True)
-
-        if not init_dir.exists():
-            bootstrap_files = ContextBuilder.BOOTSTRAP_FILES
-            for filename in bootstrap_files:
-                src = self.source_workspace / filename
-                if src.exists():
-                    dst = sandbox_workspace / filename
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(src, dst)
-        else:
-            bootstrap_files = ContextBuilder.BOOTSTRAP_FILES
-            for filename in bootstrap_files:
-                src = self.source_workspace / filename
-                if src.exists():
-                    dst = sandbox_workspace / filename
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    import shutil
-                    shutil.copy2(src, dst)
 
     async def cleanup_session(self, session_key: str) -> None:
         """Clean up sandbox for a session."""

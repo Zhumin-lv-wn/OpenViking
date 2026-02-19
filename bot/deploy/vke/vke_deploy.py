@@ -82,6 +82,7 @@ build_context: .
 k8s_manifest_path: deploy/vke/k8s/deployment.yaml
 k8s_namespace: default
 k8s_deployment_name: vikingbot
+k8s_replicas: 1
 
 kubeconfig_path: ~/.kube/config
 
@@ -205,13 +206,7 @@ tos_region: cn-beijing
 
         if not skip_image_check and self.check_image_exists(local_image_name, image_tag):
             print(f"镜像已存在: {full_local_image}")
-            try:
-                response = input("是否跳过重新构建？(Y/n): ").strip().lower()
-                if response in ["", "y", "yes"]:
-                    print("跳过镜像构建")
-                    return True
-            except (EOFError, KeyboardInterrupt):
-                print("\n用户中断，继续构建...")
+            print("直接重新构建 (如需跳过，请在配置文件中设置 skip_image_check: true)")
 
         cmd = f"docker build -f {dockerfile_path} -t {full_local_image} --platform linux/amd64 {context_path}"
         code, stdout, stderr = self.run_command(cmd, show_output=True)
@@ -321,14 +316,30 @@ tos_region: cn-beijing
         namespace = self.config.get("image_namespace", "vikingbot")
         repository = self.config.get("image_repository", "vikingbot")
         full_image_name = f"{registry}/{namespace}/{repository}:{self.config['image_tag']}"
-
+        
+        modified = False
+        
         if "__IMAGE_NAME__" in manifest_content:
             manifest_content = manifest_content.replace("__IMAGE_NAME__", full_image_name)
+            print(f"已替换镜像为: {full_image_name}")
+            modified = True
+        
+        k8s_replicas = self.config.get("k8s_replicas")
+        if k8s_replicas is not None:
+            import re
+            manifest_content = re.sub(
+                r'replicas:\s*\d+', 
+                f'replicas: {k8s_replicas}', 
+                manifest_content
+            )
+            print(f"已设置副本数为: {k8s_replicas}")
+            modified = True
+        
+        if modified:
             temp_manifest = "/tmp/vke_deploy_temp.yaml"
             with open(temp_manifest, 'w', encoding='utf-8') as f:
                 f.write(manifest_content)
             deploy_path = temp_manifest
-            print(f"已替换镜像为: {full_image_name}")
         else:
             deploy_path = manifest_path
 

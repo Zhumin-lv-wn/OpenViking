@@ -273,9 +273,11 @@ class FeishuChannel(BaseChannel):
         self._running = False
         if self._ws_client:
             try:
-                self._ws_client.stop()
+                # Try to close the WebSocket connection gracefully
+                if hasattr(self._ws_client, 'close'):
+                    self._ws_client.close()
             except Exception as e:
-                logger.warning(f"Error stopping WebSocket client: {e}")
+                logger.debug(f"Error closing WebSocket client: {e}")
         logger.info("Feishu bot stopped")
     
     def _add_reaction_sync(self, message_id: str, emoji_type: str) -> None:
@@ -683,9 +685,13 @@ class FeishuChannel(BaseChannel):
                                     logger.warning(f"HTTP image download failed: {http_e}", exc_info=True)
                             
                             if image_bytes:
-                                # Save to ~/.vikingbot/media directory like Telegram
+                                # Save to workspace/media directory
                                 from pathlib import Path
-                                media_dir = Path.home() / ".vikingbot" / "media"
+                                if self.workspace_path:
+                                    media_dir = self.workspace_path / "media"
+                                else:
+                                    # Fallback to ~/.vikingbot/media if workspace not available
+                                    media_dir = Path.home() / ".vikingbot" / "media"
                                 media_dir.mkdir(parents=True, exist_ok=True)
                                 
                                 import uuid

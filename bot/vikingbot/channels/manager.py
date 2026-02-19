@@ -37,6 +37,7 @@ class ChannelManager:
         
         channels_config = self.config.channels_config
         all_channel_configs = channels_config.get_all_channels()
+        workspace_path = self.config.workspace_path
         
         for channel_config in all_channel_configs:
             if not channel_config.enabled:
@@ -53,6 +54,7 @@ class ChannelManager:
                         self.bus,
                         channel_id=channel_id,
                         groq_api_key=self.config.providers.groq.api_key,
+                        workspace_path=workspace_path,
                     )
                 
                 elif channel_config.type == ChannelType.FEISHU:
@@ -61,6 +63,7 @@ class ChannelManager:
                         channel_config,
                         self.bus,
                         channel_id=channel_id,
+                        workspace_path=workspace_path,
                     )
                 
                 elif channel_config.type == ChannelType.DISCORD:
@@ -69,6 +72,7 @@ class ChannelManager:
                         channel_config,
                         self.bus,
                         channel_id=channel_id,
+                        workspace_path=workspace_path,
                     )
                 
                 elif channel_config.type == ChannelType.WHATSAPP:
@@ -77,6 +81,7 @@ class ChannelManager:
                         channel_config,
                         self.bus,
                         channel_id=channel_id,
+                        workspace_path=workspace_path,
                     )
                 
                 elif channel_config.type == ChannelType.MOCHAT:
@@ -85,6 +90,7 @@ class ChannelManager:
                         channel_config,
                         self.bus,
                         channel_id=channel_id,
+                        workspace_path=workspace_path,
                     )
                 
                 elif channel_config.type == ChannelType.DINGTALK:
@@ -93,6 +99,7 @@ class ChannelManager:
                         channel_config,
                         self.bus,
                         channel_id=channel_id,
+                        workspace_path=workspace_path,
                     )
                 
                 elif channel_config.type == ChannelType.EMAIL:
@@ -101,6 +108,7 @@ class ChannelManager:
                         channel_config,
                         self.bus,
                         channel_id=channel_id,
+                        workspace_path=workspace_path,
                     )
                 
                 elif channel_config.type == ChannelType.SLACK:
@@ -109,6 +117,7 @@ class ChannelManager:
                         channel_config,
                         self.bus,
                         channel_id=channel_id,
+                        workspace_path=workspace_path,
                     )
                 
                 elif channel_config.type == ChannelType.QQ:
@@ -117,6 +126,7 @@ class ChannelManager:
                         channel_config,
                         self.bus,
                         channel_id=channel_id,
+                        workspace_path=workspace_path,
                     )
                 
                 if channel:

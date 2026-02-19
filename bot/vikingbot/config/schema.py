@@ -323,7 +323,7 @@ class ChannelsConfig(BaseModel):
 class AgentDefaults(BaseModel):
     """Default agent configuration."""
     workspace: str = "~/.vikingbot/workspace/default"
-    model: str = "anthropic/claude-opus-4-5"
+    model: str = "openai/doubao-seed-2-0-pro-260215"
     max_tokens: int = 8192
     temperature: float = 0.7
     max_tool_iterations: int = 50

@@ -1175,7 +1175,7 @@
                 });
                 
                 if (data.success) {
-                    alert('Config saved!');
+                    alert('Config saved! Please restart the gateway service for changes to take effect.');
                     currentConfig = config;
                     document.getElementById('config-editor').value = JSON.stringify(currentConfig, null, 2);
                 }

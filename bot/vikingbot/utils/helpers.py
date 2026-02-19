@@ -30,7 +30,7 @@ def get_workspace_path(workspace: str | None = None, ensure_exists: bool = True)
     Get the workspace path.
     
     Args:
-        workspace: Optional workspace path. Defaults to ~/.vikingbot/workspace.
+        workspace: Optional workspace path. Defaults to ~/.vikingbot/workspace/default.
         ensure_exists: If True, ensure the directory exists (creates it if necessary.
     
     Returns:
@@ -40,7 +40,11 @@ def get_workspace_path(workspace: str | None = None, ensure_exists: bool = True)
         path = Path(workspace).expanduser()
     else:
         path = Path.home() / ".vikingbot" / "workspace" / "default"
+    
     if ensure_exists:
+        # For default workspace, use the same initialization logic as session workspaces
+        if not workspace:
+            ensure_workspace_templates(path)
         return ensure_dir(path)
     return path
 
@@ -103,6 +107,41 @@ def ensure_workspace_templates(workspace: Path) -> None:
                     dst_skill_dir = skills_dir / skill_dir.name
                     if not dst_skill_dir.exists():
                         shutil.copytree(skill_dir, dst_skill_dir)
+
+
+def get_session_workspace_path(session_key: str) -> Path:
+    """
+    Get the workspace path for a specific session.
+    
+    Args:
+        session_key: The session key (format: "channel:chat_id")
+        
+    Returns:
+        Path to the session workspace directory
+    """
+    safe_key = safe_filename(session_key.replace(":", "_"))
+    return get_data_path() / "workspace" / safe_key
+
+
+def ensure_session_workspace(session_key: str) -> Path:
+    """
+    Ensure a session workspace exists. If it doesn't exist, create it and copy templates.
+    
+    Args:
+        session_key: The session key (format: "channel:chat_id")
+        
+    Returns:
+        Path to the session workspace directory
+    """
+    workspace_path = get_session_workspace_path(session_key)
+    
+    # If workspace already exists, just return it
+    if workspace_path.exists() and workspace_path.is_dir():
+        return workspace_path
+    
+    # Workspace doesn't exist, create it and copy templates
+    ensure_workspace_templates(workspace_path)
+    return workspace_path
 
 
 def _create_minimal_workspace_templates(workspace: Path) -> None:

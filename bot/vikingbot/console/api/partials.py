@@ -450,10 +450,10 @@ def render_sessions():
             </tr>
         '''
     
-    html = f'''
-        <div class="bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
-            <h3 class="text-lg font-semibold text-gray-700 mb-4">Sessions</h3>
-            {'<p class="text-gray-500">No sessions found</p>' if len(sessions) == 0 else f'''
+    if len(sessions) == 0:
+        sessions_html = '<p class="text-gray-500">No sessions found</p>'
+    else:
+        sessions_html = f'''
             <div id="sessions-content">
                 <table class="w-full border-collapse">
                     <thead>
@@ -470,7 +470,12 @@ def render_sessions():
                     </tbody>
                 </table>
             </div>
-            '''}
+            '''
+    
+    html = f'''
+        <div class="bg-white border border-gray-200 rounded-lg p-5 shadow-sm">
+            <h3 class="text-lg font-semibold text-gray-700 mb-4">Sessions</h3>
+            {sessions_html}
         </div>
     '''
     return HTMLResponse(content=html)

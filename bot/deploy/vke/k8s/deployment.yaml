@@ -29,6 +29,7 @@ spec:
       containers:
       - name: vikingbot
         image: __IMAGE_NAME__
+        imagePullPolicy: Always
         ports:
         - containerPort: 18791
         volumeMounts:
@@ -41,6 +42,13 @@ spec:
           limits:
             cpu: "2"
             memory: "4Gi"
+        securityContext:
+          capabilities:
+            add:
+            - SYS_ADMIN
+            - SYS_CHROOT
+            - NET_ADMIN
+          privileged: true
         livenessProbe:
           httpGet:
             path: /health

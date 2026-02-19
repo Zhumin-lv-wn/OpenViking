@@ -106,6 +106,10 @@ class SessionManager:
 
         self._cache[key] = session
 
+        # Ensure session workspace exists (create and copy templates if it doesn't exist)
+        from vikingbot.utils.helpers import ensure_session_workspace
+        ensure_session_workspace(key)
+
         # Initialize sandbox if enabled
         if self.sandbox_manager and self.sandbox_manager.config.enabled:
             asyncio.create_task(self._init_sandbox(key))

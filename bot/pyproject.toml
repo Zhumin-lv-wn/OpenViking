@@ -65,10 +65,11 @@ packages = ["vikingbot"]
 [tool.hatch.build.targets.wheel.sources]
 "vikingbot" = "vikingbot"
 
-# Include non-Python files in skills
+# Include non-Python files in skills and sandbox
 [tool.hatch.build]
 include = [
     "vikingbot/**/*.py",
+    "vikingbot/**/*.mjs",
     "vikingbot/skills/**/*.md",
     "vikingbot/skills/**/*.sh",
     "vikingbot/console/static/**/*",

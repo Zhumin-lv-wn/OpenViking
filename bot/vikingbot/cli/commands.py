@@ -432,20 +432,24 @@ def copy_workspace_templates_from_source(target_workspace: Path):
 
 
 def _make_provider(config):
-    """Create LiteLLMProvider from config. Exits if no API key found."""
+    """Create LiteLLMProvider from config. Allows starting without API key."""
     from vikingbot.providers.litellm_provider import LiteLLMProvider
     p = config.get_provider()
     model = config.agents.defaults.model
-    if not (p and p.api_key) and not model.startswith("bedrock/"):
-        console.print("[red]Error: No API key configured.[/red]")
-        console.print("Set one in ~/.vikingbot/config.json under providers section")
-        raise typer.Exit(1)
+    api_key = p.api_key if p else None
+    api_base = config.get_api_base()
+    provider_name = config.get_provider_name()
+    
+    if not (api_key) and not model.startswith("bedrock/"):
+        console.print("[yellow]Warning: No API key configured.[/yellow]")
+        console.print("You can configure providers later in the Console UI.")
+    
     return LiteLLMProvider(
-        api_key=p.api_key if p else None,
-        api_base=config.get_api_base(),
+        api_key=api_key,
+        api_base=api_base,
         default_model=model,
         extra_headers=p.extra_headers if p else None,
-        provider_name=config.get_provider_name(),
+        provider_name=provider_name,
     )
 
 
@@ -479,8 +483,12 @@ def gateway(
     
     config_path = get_config_path()
     if not config_path.exists():
-        console.print("Config not found, running onboard...")
-        _run_onboard_logic()
+        console.print("Config not found, creating default config...")
+        from vikingbot.config.schema import Config
+        from vikingbot.config.loader import save_config
+        config = Config()
+        save_config(config)
+        console.print(f"[green]✓[/green] Created default config at {config_path}")
     
     config = load_config()
     bus = MessageBus()
@@ -586,6 +594,7 @@ def gateway(
             await asyncio.gather(*tasks)
         except KeyboardInterrupt:
             console.print("\nShutting down...")
+        finally:
             heartbeat.stop()
             cron.stop()
             agent.stop()

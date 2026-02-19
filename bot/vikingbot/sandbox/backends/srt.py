@@ -66,7 +66,7 @@ class SrtBackend(SandboxBackend):
             str(self._workspace),
         ]
         logger.info(f'sandbox_cmd = {cmd}')
-        logger.info(f'CWD = {self._project_root}')
+        logger.info(f'node_cwd = {self._project_root}')
         
         env = dict(os.environ)
         
