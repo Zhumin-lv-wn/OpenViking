@@ -9,11 +9,23 @@ import threading
 import tempfile
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any
+from typing import Any, Tuple
 from urllib.parse import urlparse
 
 import httpx
 from loguru import logger
+
+# Optional HTML processing libraries
+try:
+    import html2text
+    from bs4 import BeautifulSoup
+    from readability import Document
+    HTML_PROCESSING_AVAILABLE = True
+except ImportError:
+    HTML_PROCESSING_AVAILABLE = False
+    html2text = None
+    BeautifulSoup = None
+    Document = None
 
 from vikingbot.bus.events import OutboundMessage
 from vikingbot.bus.queue import MessageBus
@@ -130,25 +142,141 @@ class FeishuChannel(BaseChannel):
                 raise Exception(f"Failed to upload image: {result}")
             return result["data"]["image_key"]
     
-    async def _parse_data_uri(self, data_uri: str) -> bytes:
-        """Parse data URI to bytes."""
+    async def _parse_data_uri(self, data_uri: str) -> Tuple[bool, Any]:
+        """
+        Parse data URI. Returns (is_content, result) where:
+        - is_content = False, result = bytes (image data)
+        - is_content = True, result = str (markdown content)
+        """
         if data_uri.startswith("data:"):
             # Split header and data
             header, data = data_uri.split(",", 1)
             # Decode base64
             if ";base64" in header:
-                return base64.b64decode(data)
+                return False, base64.b64decode(data)
             else:
-                return data.encode("utf-8")
+                return False, data.encode("utf-8")
         # If it's a URL, download it
         elif data_uri.startswith("http://") or data_uri.startswith("https://"):
             async with httpx.AsyncClient(timeout=60.0) as client:
                 resp = await client.get(data_uri)
                 resp.raise_for_status()
-                return resp.content
+                content = resp.content
+                
+                # Check if it's HTML or image
+                is_html, result = self._process_html_content(content, data_uri)
+                if is_html:
+                    return True, result
+                
+                # It's an image - validate
+                content_type = resp.headers.get("content-type", "")
+                if not content_type.startswith("image/") and not self._is_image_data(content):
+                    logger.warning(
+                        f"URL returned non-image content: {data_uri}, "
+                        f"Content-Type: {content_type}, "
+                        f"First 50 bytes: {content[:50]}"
+                    )
+                    # Try to process as HTML anyway
+                    is_html, result = self._process_html_content(content, data_uri)
+                    if is_html:
+                        return True, result
+                    raise ValueError(
+                        f"URL did not return an image or HTML: {data_uri}. "
+                        f"Content-Type: {content_type}"
+                    )
+                
+                return False, content
         else:
             # Assume it's base64 without prefix
-            return base64.b64decode(data_uri)
+            return False, base64.b64decode(data_uri)
+    
+    def _is_image_data(self, data: bytes) -> bool:
+        """Check if bytes represent a valid image by magic numbers."""
+        # Common image magic numbers
+        image_magics = [
+            b"\xff\xd8\xff",  # JPEG
+            b"\x89PNG\r\n\x1a\n",  # PNG
+            b"GIF87a",  # GIF87
+            b"GIF89a",  # GIF89
+            b"RIFF" and b"WEBP",  # WebP (simplified check)
+            b"<svg",  # SVG (text-based)
+            b"<?xml",  # SVG with XML header
+            b"BM",  # BMP
+            b"II*\x00",  # TIFF (little-endian)
+            b"MM\x00*",  # TIFF (big-endian)
+        ]
+        
+        for magic in image_magics:
+            if data.startswith(magic):
+                return True
+        
+        # Special check for WebP (more precise)
+        if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            return True
+            
+        return False
+    
+    def _html_to_markdown(self, html_content: str, url: str = "") -> str:
+        """Convert HTML content to Markdown, extracting main article content."""
+        if not HTML_PROCESSING_AVAILABLE:
+            logger.warning("HTML processing libraries not available, returning raw link")
+            return url if url else html_content[:500]
+        
+        try:
+            # First try: Use readability to extract main content
+            doc = Document(html_content)
+            main_html = doc.summary()
+            title = doc.title()
+            
+            # Then convert to Markdown
+            h = html2text.HTML2Text()
+            h.ignore_links = False
+            h.ignore_images = False
+            h.body_width = 0  # No line wrapping
+            h.unicode_snob = True
+            
+            markdown = h.handle(main_html)
+            
+            # Combine title + content
+            result = ""
+            if title:
+                result += f"# {title}\n\n"
+            result += markdown
+            
+            # Add source link if available
+            if url:
+                result += f"\n\n---\n\nSource: {url}"
+            
+            return result.strip()
+            
+        except Exception as e:
+            logger.warning(f"HTML to Markdown conversion failed: {e}")
+            # Fallback: just return a link if we have it
+            return url if url else html_content[:1000]
+    
+    def _process_html_content(self, data: bytes, url: str = "") -> Tuple[bool, Any]:
+        """
+        Process content that might be HTML.
+        Returns (is_html, result) where result is either:
+        - (bytes) if it's an image
+        - (str) markdown if it's HTML content
+        """
+        # First check if it's an image
+        if self._is_image_data(data):
+            return False, data
+        
+        # Check if it's HTML
+        try:
+            text_content = data.decode('utf-8', errors='ignore')
+            if '<!doctype html' in text_content.lower() or '<html' in text_content.lower():
+                # It's HTML - convert to Markdown
+                markdown = self._html_to_markdown(text_content, url)
+                return True, markdown
+        except UnicodeDecodeError:
+            pass
+        
+        # Not HTML or image - return as-is
+        return False, data
     
     async def _download_feishu_image(self, image_key: str) -> bytes:
         """
@@ -199,11 +327,20 @@ class FeishuChannel(BaseChannel):
         parts = []
         last_end = 0
         
+        # Trailing punctuation to strip from URLs
+        trailing_punctuation = ")].,!?:;'\">}"
+        
         for m in re.finditer(pattern, content):
             before = content[last_end:m.start()]
             if before.strip():
                 parts.append(before)
-            images.append(m.group(0))
+            
+            uri = m.group(0)
+            # Strip trailing punctuation
+            while uri and uri[-1] in trailing_punctuation:
+                uri = uri[:-1]
+            
+            images.append(uri)
             last_end = m.end()
         
         remaining = content[last_end:]
@@ -400,6 +537,56 @@ class FeishuChannel(BaseChannel):
                     el["content"] = el["content"].replace(f"\x00CODE{i}\x00", cb)
 
         return elements or [{"tag": "markdown", "content": content}]
+    
+    async def _process_content_with_images(self, content: str, receive_id_type: str, chat_id: str) -> list[dict]:
+        """
+        Process content, extract and upload Markdown images, return card elements.
+        
+        Returns: list of card elements (markdown + img elements)
+        """
+        # Extract images from Markdown
+        images = []
+        
+        # Pattern: ![alt](url)
+        img_pattern = r"!\[([^\]]*)\]\(([^)]+)\)"
+        
+        # Find all images and upload them
+        for m in re.finditer(img_pattern, content):
+            alt_text = m.group(1) or ""
+            img_url = m.group(2)
+            try:
+                logger.debug(f"Processing Markdown image: {img_url[:100]}...")
+                is_content, result = await self._parse_data_uri(img_url)
+                
+                if not is_content and isinstance(result, bytes):
+                    # It's an image - upload
+                    image_key = await self._upload_image_to_feishu(result)
+                    images.append({"alt": alt_text, "img_key": image_key})
+            except Exception as e:
+                logger.warning(f"Failed to upload Markdown image {img_url[:100]}: {e}")
+        
+        # Remove all ![alt](url) from content
+        content_no_images = re.sub(img_pattern, "", content)
+        
+        elements = []
+        if content_no_images.strip():
+            elements = self._build_card_elements(content_no_images)
+        
+        # Add image elements
+        for img in images:
+            elements.append({
+                "tag": "img",
+                "img_key": img["img_key"],
+                "alt": {
+                    "tag": "plain_text",
+                    "content": img["alt"]
+                }
+            })
+        
+        if not elements:
+            elements = [{"tag": "markdown", "content": content_no_images}]
+        
+        return elements
 
     async def send(self, msg: OutboundMessage) -> None:
         """Send a message through Feishu."""
@@ -420,37 +607,60 @@ class FeishuChannel(BaseChannel):
             
             if image_data_uris:
                 # Handle images - upload and send each as image message
+                extra_markdown_content = []  # For HTML converted to Markdown
+                
                 for img_uri in image_data_uris:
                     try:
-                        img_bytes = await self._parse_data_uri(img_uri)
-                        image_key = await self._upload_image_to_feishu(img_bytes)
+                        logger.debug(f"Processing URI: {img_uri[:100]}...")
+                        is_content, result = await self._parse_data_uri(img_uri)
                         
-                        # Send as image message
-                        content = json.dumps({"image_key": image_key}, ensure_ascii=False)
-                        
-                        request = CreateMessageRequest.builder() \
-                            .receive_id_type(receive_id_type) \
-                            .request_body(
-                                CreateMessageRequestBody.builder()
-                                .receive_id(msg.chat_id)
-                                .msg_type("image")
-                                .content(content)
-                                .build()
-                            ).build()
-                        
-                        response = self._client.im.v1.message.create(request)
-                        
-                        if not response.success():
-                            logger.error(
-                                f"Failed to send Feishu image: code={response.code}, "
-                                f"msg={response.msg}, log_id={response.get_log_id()}"
-                            )
+                        if is_content:
+                            # It's HTML converted to Markdown - add to text content
+                            logger.debug(f"Converted HTML to Markdown: {len(result)} chars")
+                            extra_markdown_content.append(result)
+                        else:
+                            # It's an image - upload and send
+                            logger.debug(f"Successfully parsed image, size: {len(result)} bytes")
+                            image_key = await self._upload_image_to_feishu(result)
+                            
+                            # Send as image message
+                            content = json.dumps({"image_key": image_key}, ensure_ascii=False)
+                            
+                            request = CreateMessageRequest.builder() \
+                                .receive_id_type(receive_id_type) \
+                                .request_body(
+                                    CreateMessageRequestBody.builder()
+                                    .receive_id(msg.chat_id)
+                                    .msg_type("image")
+                                    .content(content)
+                                    .build()
+                                ).build()
+                            
+                            response = self._client.im.v1.message.create(request)
+                            
+                            if not response.success():
+                                logger.error(
+                                    f"Failed to send Feishu image: code={response.code}, "
+                                    f"msg={response.msg}, log_id={response.get_log_id()}"
+                                )
+                                extra_markdown_content.append(f"Link: {img_uri}")
+                    except ValueError as e:
+                        # This is our validation error
+                        logger.warning(f"Processing failed for {img_uri[:100]}: {e}")
+                        extra_markdown_content.append(f"Link: {img_uri}")
                     except Exception as e:
-                        logger.warning(f"Failed to send image: {e}")
+                        logger.warning(f"Failed to process URI: {e}")
+                        extra_markdown_content.append(f"Link: {img_uri}")
                 
-                # Send remaining text content if any
+                # Combine all content
+                if extra_markdown_content:
+                    if text_content.strip():
+                        text_content += "\n\n"
+                    text_content += "\n\n---\n\n".join(extra_markdown_content)
+                
+                # Process and send content with images
                 if text_content.strip():
-                    elements = self._build_card_elements(text_content)
+                    elements = await self._process_content_with_images(text_content, receive_id_type, msg.chat_id)
                     card = {
                         "config": {"wide_screen_mode": True},
                         "elements": elements,
@@ -477,8 +687,8 @@ class FeishuChannel(BaseChannel):
                     else:
                         logger.debug(f"Feishu message sent to {msg.chat_id}")
             else:
-                # No images, use normal card with markdown + table support
-                elements = self._build_card_elements(msg.content)
+                # No images extracted from content, but content might still have Markdown images
+                elements = await self._process_content_with_images(msg.content, receive_id_type, msg.chat_id)
                 card = {
                     "config": {"wide_screen_mode": True},
                     "elements": elements,
