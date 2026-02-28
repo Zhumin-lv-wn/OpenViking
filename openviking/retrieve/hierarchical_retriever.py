@@ -102,6 +102,9 @@ class HierarchicalRetriever:
         effective_threshold = score_threshold if score_threshold is not None else self.threshold
 
         target_dirs = [d for d in (query.target_directories or []) if d]
+        is_root_search = len(target_dirs) == 1 and target_dirs[0].rstrip("/") == "viking:"
+        if is_root_search:
+            target_dirs = []
 
         if not await self.vector_store.collection_exists_bound():
             logger.warning(
@@ -432,9 +435,9 @@ class HierarchicalRetriever:
         """Return starting directory URI list based on context_type and user context.
 
         When context_type is None, returns roots for all types.
-        ROOT has no space, relies on global_vector_search without URI prefix filter.
+        ROOT users also get space-qualified URIs so recursive search has valid starting points.
         """
-        if not ctx or ctx.role == Role.ROOT:
+        if not ctx:
             return []
 
         user_space = ctx.user.user_space_name()

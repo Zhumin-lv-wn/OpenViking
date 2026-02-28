@@ -461,6 +461,50 @@ class VikingVectorIndexBackend:
                 updated += 1
         return updated
 
+    _USER_STRUCTURE_DIRS = {"memories"}
+    _AGENT_STRUCTURE_DIRS = {"memories", "skills", "instructions", "workspaces"}
+    _NO_SPACE_SCOPES = {"resources", "temp", "transactions", "queue"}
+
+    def _expand_target_uri(self, uri: str, ctx: RequestContext) -> List[str]:
+        """Expand a target URI to include the user/agent space segment when missing.
+
+        URIs like viking://user/memories/ need the space injected:
+        viking://user/memories/ → viking://user/{user_space}/memories/
+        viking://agent/memories/ → viking://agent/{agent_space}/memories/
+        """
+        stripped = uri.rstrip("/")
+        if stripped == "viking:":
+            return []
+
+        parts = [p for p in uri[len("viking://"):].strip("/").split("/") if p]
+        if not parts:
+            return []
+
+        scope = parts[0]
+        if scope in self._NO_SPACE_SCOPES:
+            return [uri]
+
+        if len(parts) >= 2:
+            second = parts[1]
+            if scope == "user" and second not in self._USER_STRUCTURE_DIRS:
+                return [uri]
+            if scope == "agent" and second not in self._AGENT_STRUCTURE_DIRS:
+                return [uri]
+            if scope == "session":
+                return [uri]
+
+        if scope in {"user", "session"}:
+            space = ctx.user.user_space_name()
+        elif scope == "agent":
+            space = ctx.user.agent_space_name()
+        else:
+            return [uri]
+
+        remainder = "/".join(parts[1:])
+        if remainder:
+            return [f"viking://{scope}/{space}/{remainder}/"]
+        return [f"viking://{scope}/{space}/"]
+
     def _build_scope_filter(
         self,
         ctx: RequestContext,
@@ -477,9 +521,14 @@ class VikingVectorIndexBackend:
             filters.append(tenant_filter)
 
         if target_directories:
-            uri_conds = [In("uri", [target_dir]) for target_dir in target_directories if target_dir]
-            if uri_conds:
-                filters.append(Or(uri_conds))
+            expanded = []
+            for d in target_directories:
+                if d:
+                    expanded.extend(self._expand_target_uri(d, ctx))
+            if expanded:
+                uri_conds = [In("uri", [uri]) for uri in expanded]
+                if uri_conds:
+                    filters.append(Or(uri_conds))
 
         if extra_filter:
             if isinstance(extra_filter, dict):
